@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#171c26"><title>لونا للمحادثة v31.0</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#0f1218;color:#eee;font-family:Arial,sans-serif;min-height:100vh}.app{width:min(720px,100%);height:100vh;margin:auto;display:flex;flex-direction:column;background:#10131a}.head{padding:14px 16px;background:#171c26;border-bottom:1px solid #292f3a;display:flex;align-items:center;justify-content:space-between}.brand{font-size:21px;font-weight:700}.status{font-size:11px;opacity:.7}.chat{flex:1;padding:14px;overflow:auto}.msg{margin:9px 0;padding:11px 14px;border-radius:15px;max-width:86%;line-height:1.65;white-space:pre-wrap;overflow-wrap:anywhere}.luna{background:#202735;margin-left:auto}.me{background:#343b49;margin-right:auto}.typing{opacity:.7;font-size:13px}.bar{display:flex;gap:7px;padding:10px;background:#171c26;border-top:1px solid #292f3a}.bar input{min-width:0;flex:1;padding:13px;border:0;border-radius:12px;background:#252b36;color:#fff;font-size:16px;outline:none}.bar button{padding:0 17px;border:0;border-radius:12px;background:#fff;color:#111;font-weight:700}.tools{display:flex;gap:7px;padding:0 10px 9px;background:#171c26}.tools button{border:1px solid #353d4a;background:#202735;color:#eee;border-radius:10px;padding:7px 10px;font-size:12px}.small{font-size:11px;opacity:.55;text-align:center;padding:5px;background:#171c26}.toast{position:fixed;bottom:75px;left:50%;transform:translateX(-50%);background:#252b36;padding:9px 13px;border-radius:10px;font-size:13px;display:none;max-width:90%}
+</style></head>
+<body><main class="app">
+<header class="head"><div><div class="brand">🌙 لونا للمحادثة</div><div class="status">محلية • الذاكرة اختيارية • بدون إرسال تلقائي للبيانات</div></div><button id="clear" title="مسح المحادثة">🗑️</button></header>
+<div id="chat" class="chat"></div>
+<div class="tools"><button id="help">الأوامر</button><button id="remember">تذكّر</button><button id="memories">الذاكرة</button><button id="export">نسخة احتياطية</button><button id="import">استعادة</button><input id="file" type="file" accept="application/json" hidden></div>
+<div class="small">بيانات لونا تُحفظ محلياً في هذا المتصفح فقط.</div>
+<div class="bar"><input id="input" placeholder="اكتب للونا..." autocomplete="off"><button id="send">إرسال</button></div>
+</main><div id="toast" class="toast"></div>
+<script>
+// v2.0: تثبيت أساس المحادثة المحلية وتجميع أدوات الفحص والسياق
+
+const chat=document.getElementById('chat'),input=document.getElementById('input'),KEY='luna_memory_v3',CHAT_KEY='luna_chat_v3';
+const MAX_MEMORIES=50,MAX_CHAT=150;
+const norm=s=>s.toLowerCase().trim().replace(/[ًٌٍَُِّْـ]/g,'').replace(/[؟?!،,]/g,'');
+function toast(t){const x=document.getElementById('toast');x.textContent=t;x.style.display='block';clearTimeout(window.tt);window.tt=setTimeout(()=>x.style.display='none',1800)}
+function read(k,d=[]){try{return JSON.parse(localStorage.getItem(k)||JSON.stringify(d))}catch{return d}}
+function write(k,v){try{localStorage.setItem(k,JSON.stringify(v));return true}catch{return false}}
+function safePush(k,item,max){const a=read(k);a.push(item);return write(k,a.slice(-max))}
+function add(text,who,save=true){if(!text)return;const d=document.createElement('div');d.className='msg '+who;d.textContent=text;chat.appendChild(d);chat.scrollTop=chat.scrollHeight;if(save) safePush(CHAT_KEY,{text,who,time:Date.now()},MAX_CHAT)}
+function memories(){return read(KEY)}
+function saveMemory(t){return safePush(KEY,{text:t,time:Date.now()},MAX_MEMORIES)}
+function clearMemory(){localStorage.removeItem(KEY)}
+function load(){const a=read(CHAT_KEY);if(a.length)a.forEach(x=>add(x.text,x.who,false));else add('هلا صديقي 🌙 أنا لونا. هاي نسخة مطوّرة، وأفهم أوامر ومحادثات محلية أكثر من قبل.','luna',false)}
+function memoryText(){const a=memories();return a.length?'أتذكر محلياً:\n• '+a.map(x=>x.text).join('\n• '):'حالياً ما عندي ذكريات محفوظة.'}
+function helpText(){return `أوامر لونا الحالية:
+• «احسبي 25*4» — حساب محلي بسيط
+
+• «تذكري أحب القهوة» — حفظ معلومة محلياً
+• «شنو تتذكرين» — عرض الذاكرة
+• «انسي» — مسح الذاكرة
+• «امسحي المحادثة» — حذف سجل الدردشة
+• «شنو تكدرين؟» — عرض القدرات
+• «آخر شي حچينا» — عرض آخر رسالة محفوظة
+• زر «نسخة احتياطية» — تصدير بياناتك كملف JSON.`} 
+
+function calc(expr){try{if(!/^[0-9+\-*/().%\s]+$/.test(expr))return null;const tokens=expr.match(/(?:\d+(?:\.\d+)?)|[+\-*/().%]/g);if(!tokens||tokens.join('')!==expr.replace(/\s+/g,''))return null;let i=0;const peek=()=>tokens[i];const take=()=>tokens[i++];function primary(){const t=peek();if(t==='('){take();const v=addsub();if(take()!==')')throw 0;return v}if(!/^\d/.test(t||''))throw 0;take();return Number(t)}function unary(){if(peek()==='-'){take();return -unary()}if(peek()==='+'){take();return unary()}return primary()}function mul(){let v=unary();while(['*','/','%'].includes(peek())){const op=take(),r=unary();if(op==='*')v*=r;else if(op==='/'){if(r===0)throw 0;v/=r}else v%=r}return v}function addsub(){let v=mul();while(['+','-'].includes(peek())){const op=take(),r=mul();v=op==='+'?v+r:v-r}return v}const v=addsub();if(i!==tokens.length||!Number.isFinite(v))return null;return String(v)}catch{return null}}
+function recentUserText(){return read(CHAT_KEY).filter(x=>x.who==='me').slice(-5).map(x=>x.text).join(' ')}
+function conversationSummary(){const h=read(CHAT_KEY).filter(x=>x.who==='me').slice(-5).map(x=>x.text).filter(Boolean);return h.length?'آخر 5 رسائل منك:\n• '+h.join('\n• '):'ماكو رسائل محفوظة بعد.'}
+function hasAny(s,arr){return arr.some(x=>s.includes(x))}
+function contextReply(n){
+  if(/^(شنو|ماذا|ما هو|ما هي|ليش|لماذا|شلون|كيف|وين|اين|متى|كم)/.test(n)){
+    const h=read(CHAT_KEY).filter(x=>x.who==='me').slice(-5).map(x=>x.text);
+    if(h.length>1 && (n.includes('تقصد')||n.includes('يعني')||n.includes('هذا')||n.includes('شنو يعني'))){const last=h[h.length-2]||'';return 'أتابع وياك 🌙 آخر موضوع جان: «'+last+'». إذا تقصد هذا، وضّحلي شنو الجزء اللي تريد أفصّله.';}
+  }
+  return null;
+}
+function reply(raw){const s=raw.trim(),n=norm(s);if(!s)return '';
+const cr=contextReply(n);if(cr)return cr;
+if(/^احسبي\s+/.test(n)){const e=s.replace(/^احسبي\s+/,'').trim();const v=calc(e);return v===null?'ما كدرت أحسبها، استخدم أرقام وعمليات حسابية فقط.':'الناتج: '+v+' 🌙'}
+if(/^تذكري\s+/.test(s)||/^اذكري\s+/.test(s)){let m=s.replace(/^(تذكري|اذكري)\s+/,'').trim();m=safeMemoryText(m);if(!m)return 'شنو تريديني أتذكر؟';if(!uniqueMemory(m))return 'هالمعلومة موجودة أصلًا بالذاكرة. 🌙';return 'تم 🌙 حفظتها بذاكرة لونا المحلية.'}
+if(['شنو تتذكرين','ماذا تتذكرين','ذاكرتج','الذاكرة'].includes(n))return memoryText();
+if(n==='انسي'||n==='انسِي'||n.includes('امسحي الذاكرة')||n.includes('احذفي الذاكرة')){clearMemory();return 'تم مسح ذاكرة لونا المحلية. 🌙'}
+if(n.includes('امسحي المحادثة')||n.includes('مسح المحادثة')){localStorage.removeItem(CHAT_KEY);chat.innerHTML='';return 'تم مسح سجل المحادثة من هذا الجهاز. 🌙'}
+if(n==='مساعدة'||n==='الاوامر'||n==='الأوامر')return helpText();
+if(n.includes('حالة لونا')||n.includes('حالة البرنامج'))return localStatus();
+if(n.startsWith('ابحثي بالمحادثة ')){return chatSearch(s.slice(s.indexOf(' ')+1).trim())}
+if(n.startsWith('ابحثي بالذاكرة ')){return memorySearch(s.slice(s.indexOf(' ')+1).trim())}
+if(n.includes('آخر 5 رسائل')||n.includes('اخر 5 رسائل'))return lastMessages(5);
+if(n.includes('تشخيص لونا'))return diagnostic();
+if(n.includes('امسحي الإدخال')||n.includes('امسحي الكتابة')){clearInput();return 'تم تنظيف خانة الكتابة. 🌙'}
+if(n.includes('معلومات لونا')||n.includes('عن لونا'))return appInfo();
+if(n.includes('شنو تكدرين')||n.includes('ماذا تستطيعين')||n.includes('قدراتج'))return 'أفهم التحيات والأسئلة البسيطة، وأتعامل مع الذاكرة المحلية والأوامر، وأحتفظ بسجل الدردشة على الجهاز. تطوير الفهم الأوسع يحتاج محرك ذكاء إضافي، ونكدر نضيفه لاحقاً.';
+if(/^(هلا|مرحبا|السلام عليكم|الو|هلو|اهلا)/.test(n))return 'هلا بيك ❤️ لونا وياك. شتريد نسوي؟';
+if(n.includes('شلونج')||n.includes('كيف حالك'))return 'تمام 🌙 وياك وأتابع شغلنا.';
+if(n.includes('من انتي')||n.includes('من انت'))return 'أني لونا 🌙، نسخة محادثة محلية قيد التطوير.';
+if(n.includes('شكرا')||n.includes('مشكور'))return 'العفو ❤️';
+if(n.includes('تصبحين على خير')||n.includes('تصبح على خير'))return 'وأنت من أهله 🌙❤️';
+if(n.includes('شنو اخبارج')||n.includes('شنو الاخبار'))return 'كلشي تمام، ومستمرين بتطوير لونا خطوة خطوة. 🌙';
+if(n.includes('وين وصلنا')||n.includes('وين وصلنا بالشغل'))return 'وصلنا للنسخة 1.8 🌙: ذاكرة محلية، سجل محادثة، نسخ واستعادة، حساب آمن، وتحسين متابعة السياق. النسخ القديمة محفوظة.';
+if(n.includes('آخر شي حچينا')||n.includes('اخر شي حچينا')||n.includes('آخر موضوع')||n.includes('اخر موضوع')){const h=read(CHAT_KEY).filter(x=>x.who==='me').slice(-1)[0];return h?'آخر شي حچينا عنه كان: «'+h.text+'» 🌙':'بعد ماكو محادثة محفوظة.'}
+if(n.includes('فحص لونا')||n.includes('فحص البرنامج')||n.includes('حالة لونا')){const m=memories().length,c=read(CHAT_KEY).length;return 'فحص لونا المحلي ✅\nالذاكرة: '+m+'\nسجل المحادثة: '+c+'\nالتخزين المحلي يعمل ضمن حدود النسخة الحالية. 🌙'}
+if(n.includes('كملي')||n.includes('كمل')||n.includes('استمري'))return 'أكيد 🌙 مستمرة. هاي النسخة مبنية على آخر نسخة محفوظة، والنسخ القديمة تبقى بدون تغيير.';
+if(n.includes('ساعديني')||n.includes('ساعدني'))return 'أكيد 🌙 گلي شنو تريد تسوي، وإذا كان عندي أمر محلي مناسب أساعدك بيه مباشرة.';
+if(n.includes('شنو رأيج')||n.includes('رأيج'))return 'أكدر أشرحلك الخيارات والمزايا والعيوب، والقرار يبقى إلك 🌙';
+if(n.includes('الوقت')||n.includes('الساعة'))return 'هسه الوقت حسب جهازك: '+new Date().toLocaleTimeString('ar-IQ',{hour:'2-digit',minute:'2-digit'});
+if(n.includes('التاريخ')||n.includes('اليوم'))return 'اليوم حسب جهازك: '+new Date().toLocaleDateString('ar-IQ');
+if(n.includes('تذكري')&&n.length<10)return 'أكيد، گلي شنو تريديني أتذكر.';
+return 'فهمت عليك: «'+s+'» 🌙\nإذا تريد جواب أدق، وضّحلي شنو الجانب اللي تقصده، ولونا تكمل وياك من نفس السياق.'}
+function chatSearch(q){const a=read(CHAT_KEY).filter(x=>String(x.text).includes(q)).slice(-10);return a.length?'نتائج البحث بالمحادثة:\n• '+a.map(x=>x.text).join('\n• '):'ما لكيت هالكلمة بالمحادثة المحفوظة.'}
+function uniqueMemory(t){const a=memories();if(a.some(x=>x.text===t))return false;return saveMemory(t)}
+function memorySearch(q){const a=memories().filter(x=>String(x.text).includes(q));return a.length?'ذكريات مطابقة:\n• '+a.map(x=>x.text).join('\n• '):'ماكو ذكرى مطابقة.'}
+function lastMessages(n=5){const a=read(CHAT_KEY).slice(-n);return a.length?a.map(x=>(x.who==='me'?'أنت':'لونا')+': '+x.text).join('\n'):'ماكو رسائل محفوظة.'}
+function safeMemoryText(t){return t.replace(/\s+/g,' ').trim().slice(0,500)}
+function diagnostic(){try{const a=memories(),c=read(CHAT_KEY);return 'تشخيص لونا ✅\nالذاكرة: '+a.length+'/50\nالدردشة: '+c.length+'/150\nالتخزين المحلي: متاح';}catch{return 'تعذر فحص التخزين المحلي.'}}
+function clearInput(){input.value='';input.focus()}
+function appInfo(){return 'لونا للمحادثة v40.0 🌙\nالبيانات محلية على الجهاز، والذاكرة وسجل الدردشة محدودان للحفاظ على الخفة.'}
+function localStatus(){const used=JSON.stringify({memories:memories(),chat:read(CHAT_KEY)}).length;return 'الحالة المحلية: الذاكرة '+memories().length+' • سجل الدردشة '+read(CHAT_KEY).length+' • حجم تقريبي '+used+' بايت.'}
+function clearAllLocal(){try{localStorage.removeItem(KEY);localStorage.removeItem(CHAT_KEY);chat.innerHTML='';add('تم حذف ذاكرة وسجل لونا المحليين. 🌙','luna')}catch{toast('تعذر المسح')}}
+async function send(){const t=input.value.trim();if(!t)return;add(t,'me');input.value='';const typing=document.createElement('div');typing.className='msg luna typing';typing.textContent='لونا تفكر...';chat.appendChild(typing);chat.scrollTop=chat.scrollHeight;try{const history=read(CHAT_KEY).slice(-40).map(x=>({role:x.who==='luna'?'assistant':'user',content:String(x.text||'').slice(0,4000)}));history.pop();const body={message:t,history,memories:memories().slice(-20).map(x=>String(x.text||'').slice(0,1000)),locale:navigator.language||'ar-IQ'};const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});const d=await r.json().catch(()=>({}));if(!r.ok||!d.ok)throw new Error(d.error||'تعذر الاتصال بلونا');typing.remove();add(String(d.reply||''),'luna')}catch(e){typing.remove();add(reply(t)+'\n\nملاحظة: تعذر الاتصال بخادم الذكاء حالياً.','luna')}}
+function exportData(){const data={version:'40.0',memories:memories(),chat:read(CHAT_KEY),exported_at:new Date().toISOString()};const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'}),url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='luna-backup.json';a.click();setTimeout(()=>URL.revokeObjectURL(url),500);toast('تم إنشاء النسخة الاحتياطية')}
+document.getElementById('send').onclick=send;input.addEventListener('keydown',e=>{if(e.key==='Enter')send()});document.getElementById('help').onclick=()=>add(helpText(),'luna');document.getElementById('remember').onclick=()=>{input.value='تذكري ';input.focus()};document.getElementById('memories').onclick=()=>add(memoryText(),'luna');document.getElementById('export').onclick=exportData;document.getElementById('import').onclick=()=>document.getElementById('file').click();document.getElementById('file').onchange=e=>{const f=e.target.files[0];if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);if(!d||!Array.isArray(d.memories)||!Array.isArray(d.chat)||d.memories.length>50||d.chat.length>150)throw 0;write(KEY,d.memories.slice(-50));write(CHAT_KEY,d.chat.slice(-150));load();toast('تمت استعادة النسخة بأمان');}catch{toast('النسخة غير صالحة أو غير مدعومة')}};r.readAsText(f);e.target.value=''};document.getElementById('clear').onclick=()=>{localStorage.removeItem(CHAT_KEY);chat.innerHTML='';add('تم مسح سجل المحادثة. الذاكرة بقيت محفوظة لأن مسح الدردشة لا يمسح الذاكرة. 🌙','luna')};load();
+</script></body></html>
